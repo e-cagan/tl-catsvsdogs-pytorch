@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+
+# Virtual env
+.venv/
+venv/
+ENV/
+env/
+*.env
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs & reports
+logs/
+*.log
+htmlcov/
+.coverage
+*.coverage
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Data & archives
+data/
+datasets/
+archive/
+*.zip
+*.tar
+*.tar.gz
+
+# Models / checkpoints / outputs
+checkpoints/
+runs/
+outputs/
+*.pt
+*.pth
+*.onnx
+
+# Caches
+.cache/
