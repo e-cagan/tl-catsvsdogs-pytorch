@@ -3,14 +3,20 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import random
+import warnings
+import json
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms, models
 from PIL import Image, ImageFile
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 
 if __name__ == '__main__':
     # Prevent getting error because of truncated images
     ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+    # Filter the truncated image warning for clearity (optional)
+    warnings.filterwarnings("ignore", message="Truncated File Read")
 
     # Define device
     device = ("cuda" if torch.cuda.is_available() else "cpu")
@@ -18,6 +24,17 @@ if __name__ == '__main__':
     # Define constants
     BATCH_SIZE = 64
     EPOCHS = 10
+
+    # Define a set_seed function to set random seed to get same randomness
+    def set_seed(seed=42):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    
+    set_seed(42)
 
     # Implement custom dataset
     class CatsVsDogsDataset(Dataset):
@@ -98,13 +115,18 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=8, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=8, pin_memory=True)
 
-    # Define model, loss function and optimizer
+    # Define model, loss function, optimizer also a learning rate scheduler
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
     model.fc = nn.Linear(model.fc.in_features, 2) # Cat, Dog
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.01)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+
+    # Best accuracy and history for logging
+    best_acc = 0.0
+    history = []
 
     # Train and evaluate the model
     for epoch in range(EPOCHS):
@@ -124,7 +146,9 @@ if __name__ == '__main__':
 
             running_loss += loss.item()
         
-        print(f"Epoch: {epoch}, Loss: {running_loss / len(train_loader)}")
+        train_loss = running_loss / len(train_loader)
+        
+        print(f"Epoch: {epoch}, Train Loss: {train_loss}")
 
         model.eval()
         val_labels = []
@@ -142,7 +166,22 @@ if __name__ == '__main__':
                 val_preds.extend(preds.cpu().numpy())
             
         val_accuracy = accuracy_score(val_labels, val_preds)
-        print(f"Validation Accuracy: {val_accuracy}")
+        val_f1_score = f1_score(val_labels, val_preds, average="macro")
+        print(f"Epoch {epoch+1}/{EPOCHS} | loss {train_loss:.4f} | acc {val_accuracy:.4f} | f1 {val_f1_score:.4f}")
 
-    # Save the model
-    torch.save(model.state_dict(), 'cvd_classifier.pth')
+        # Take the best accuracy
+        if val_accuracy > best_acc:
+            best_acc = val_accuracy
+            torch.save(model.state_dict(), 'best.pth')
+            print("Best accuracy improved! Model saved as best.pth")
+
+        # Append logging
+        history.append({"epoch": epoch+1, "train_loss": float(train_loss),
+                    "val_accuracy": float(val_accuracy), "val_f1_score": float(val_f1_score)})
+
+        # Step the LR Scheduler
+        scheduler.step()
+    
+    # Save the best metrics to json file
+    with open("metrics.json", "w") as f:
+        json.dump({"best_acc": best_acc, "history": history}, f, indent=2)
